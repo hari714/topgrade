@@ -2795,7 +2795,7 @@ pub fn run_android_sdk(ctx: &ExecutionContext) -> Result<()> {
 
     #[cfg(not(windows))]
     {
-        return ctx.execute(&command_path).args(args).status_checked();
+        ctx.execute(&command_path).args(args).status_checked()
     }
     #[cfg(windows)]
     {
