@@ -2617,7 +2617,7 @@ enum AndroidSdkTool {
 fn android_sdk_roots() -> Vec<PathBuf> {
     let mut roots = ["ANDROID_HOME", "ANDROID_SDK_ROOT"]
         .into_iter()
-        .filter_map(|name| env::var_os(name))
+        .filter_map(env::var_os)
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
         .collect::<Vec<_>>();
@@ -2642,9 +2642,14 @@ fn android_sdk_roots() -> Vec<PathBuf> {
 }
 
 fn find_android_sdk_command(roots: &[PathBuf]) -> Option<(PathBuf, PathBuf, AndroidSdkTool)> {
-    for root in roots {
-        let bin = root.join("cmdline-tools").join("latest").join("bin");
+    // `cmdline-tools/latest/bin` is the layout Android Studio installs; `cmdline-tools/bin` is what
+    // you get when the command-line tools zip is extracted directly into the SDK root.
+    let bins = roots.iter().flat_map(|root| {
+        let cmdline_tools = root.join("cmdline-tools");
+        [cmdline_tools.join("latest").join("bin"), cmdline_tools.join("bin")].map(|bin| (root, bin))
+    });
 
+    for (root, bin) in bins {
         let android_names: &[&str] = if cfg!(windows) {
             &["android.bat", "android.cmd", "android.exe"]
         } else {
@@ -2713,6 +2718,20 @@ mod android_sdk_tests {
         let (_, _, tool) = find_android_sdk_command(&[root.path().to_path_buf()]).unwrap();
 
         assert_eq!(tool, AndroidSdkTool::SdkManager);
+    }
+
+    #[test]
+    fn finds_sdkmanager_in_unversioned_cmdline_tools() {
+        let root = tempdir().unwrap();
+        let name = if cfg!(windows) { "sdkmanager.bat" } else { "sdkmanager" };
+        let path = root.path().join("cmdline-tools/bin").join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "").unwrap();
+
+        let (_, found, tool) = find_android_sdk_command(&[root.path().to_path_buf()]).unwrap();
+
+        assert_eq!(tool, AndroidSdkTool::SdkManager);
+        assert_eq!(found, path);
     }
 }
 
